@@ -9,8 +9,8 @@ import ctypes
 
 from multiprocessing import Process, Manager, Value, Queue
 
-from whisper_live.trt_server import TranscriptionServer
-from llm_service import TensorRTLLMEngine
+from whisper_live.server import TranscriptionServer
+from llm_service_torch_compile import PhiEngine
 from tts_service import WhisperSpeechTTS
 
 
@@ -90,15 +90,11 @@ if __name__ == "__main__":
     )
     whisper_process.start()
 
-    llm_provider = TensorRTLLMEngine()
+    llm_provider = PhiEngine()
     # llm_provider = MistralTensorRTLLMProvider()
     llm_process = multiprocessing.Process(
         target=llm_provider.run,
         args=(
-            # args.mistral_tensorrt_path,
-            # args.mistral_tokenizer_path,
-            args.phi_tensorrt_path,
-            args.phi_tokenizer_path,
             transcription_queue,
             llm_queue,
             audio_queue,
