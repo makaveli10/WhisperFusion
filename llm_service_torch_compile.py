@@ -24,6 +24,174 @@ import torch._inductor.config
 from phi_model import Transformer
 
 
+def get_task(sentence):
+    task = ""
+    quote_type = ""
+    start_pos = -1
+    end_pos = -1
+    # Remove multiple spaces.
+    while True:
+        if sentence.find('  ') >= 0:
+            sentence = sentence.replace('  ', ' ')
+        else:
+            break
+    
+    # Reponse start patterns.
+    task_start_patterns = ["t': '", "t':'", "t' : '", "t' :'", 't": "', 't":"', 't" : "', 't" :"', "'t' '", '"t" "']
+    
+    for p, start_pattern in enumerate(task_start_patterns):
+        if start_pattern in sentence:
+            # quote_type = 
+            start_pos = sentence.find(start_pattern)
+            if start_pos >= 0:
+
+                # Get quote type.
+                quote_type = "'"
+                if '"' in start_pattern:
+                    quote_type = '"'
+
+                # Find end of task.
+                end_pos = sentence.find(quote_type, start_pos + len(start_pattern))
+                if end_pos >= 0:
+                    task = sentence[start_pos + len(start_pattern):end_pos]
+                else:
+                    task = sentence[start_pos + len(start_pattern):]
+
+    return (task.strip(), quote_type, start_pos, end_pos)
+
+def get_response(sentence):
+    response = ""
+    quote_type = ""
+    start_pos = -1
+    end_pos = -1
+    # Remove multiple spaces.
+    while True:
+        if sentence.find('  ') >= 0:
+            sentence = sentence.replace('  ', ' ')
+        else:
+            break
+    
+    # Reponse start patterns.
+    response_start_patterns = ["r': '", "r':'", "r' : '", "r' :'", 'r": "', 'r":"', 'r" : "', 'r" :"', "'r' '", '"r" "']
+
+    for p, start_pattern in enumerate(response_start_patterns):
+        if start_pattern in sentence:
+            # quote_type = 
+            start_pos = sentence.find(start_pattern)
+            if start_pos >= 0:
+
+                # Get quote type.
+                quote_type = "'"
+                if '"' in start_pattern:
+                    quote_type = '"'
+
+                # Find end of response.
+                end_pos = sentence.find(quote_type, start_pos + len(start_pattern))
+                if end_pos >= 0:
+                    response = sentence[start_pos + len(start_pattern):end_pos]
+                else:
+                    response = sentence[start_pos + len(start_pattern):]
+
+    return (response.strip(), quote_type, start_pos, end_pos)
+
+def get_mutation(sentence):
+    mutation = ""
+    quote_type = ""
+    start_pos = -1
+    end_pos = -1
+    # Remove multiple spaces.
+    while True:
+        if sentence.find('  ') >= 0:
+            sentence = sentence.replace('  ', ' ')
+        else:
+            break
+    
+    # Reponse start patterns.
+    mutation_start_patterns = ["m': '", "m':'", "m' : '", "m' :'", 'm": "', 'm":"', 'm" : "', 'm" :"', "'m' '", '"m" "']
+
+    for p, start_pattern in enumerate(mutation_start_patterns):
+        if start_pattern in sentence:
+            # quote_type = 
+            start_pos = sentence.find(start_pattern)
+            if start_pos >= 0:
+
+                # Get quote type.
+                quote_type = "'"
+                if '"' in start_pattern:
+                    quote_type = '"'
+
+                # Find end of mutation.
+                end_pos = sentence.find(quote_type, start_pos + len(start_pattern))
+                if end_pos >= 0:
+                    mutation = sentence[start_pos + len(start_pattern):end_pos]
+                else:
+                    mutation = sentence[start_pos + len(start_pattern):]
+
+    return (mutation.strip(), quote_type, start_pos, end_pos)
+
+def get_llm_output_json(json_string):
+    # Remove the outer curly braces and split by ':'
+    llm_json_output = {}
+    try:
+        llm_json_output = json.loads(json_string)
+    except Exception as e:
+        print("No valid json output ... trying to fix it: ", e)
+        llm_json_output = {
+            "r": "Please be more specific. What can I get for you today?", 
+            "m": "", 
+            "t":"greeting%default;"
+        }
+
+        response = get_response(json_string)
+        if response[2] >= 0 and response[3] >= 0:
+            llm_json_output["r"] = response[0]
+
+        mutation = get_mutation(json_string)
+        if mutation[2] >= 0 and mutation[3] >= 0:
+            llm_json_output["m"] = mutation[0]
+
+        task = get_task(json_string)
+        if task[2] >= 0 and task[3] >= 0:
+            llm_json_output["t"] = task[0]
+    return json.dumps(llm_json_output)
+
+def replace_num_total(test_str, total_price):
+    number = ""
+    if "\u20ac" in test_str:
+        start_pos = test_str.find("\u20ac")
+        end_pos = test_str.find(" ", start_pos)
+        if end_pos > 0:
+            number = test_str[start_pos:end_pos]
+        else:
+            number = test_str[start_pos:]
+
+    if "€" in test_str:
+        start_pos = test_str.find("€")
+        end_pos = test_str.find(" ", start_pos)
+        if end_pos > 0:
+            number = test_str[start_pos:end_pos]
+        else:
+            number = test_str[start_pos:]
+
+    endings = [".", ",", "!", "?"]
+    for ending in endings:
+        if number.endswith(ending):
+            number = number[:-1]
+
+    if len(number) > 0:
+        test_str = test_str.replace(number, total_price)
+    else:
+        test_str = test_str.replace("[[TOTAL]]", total_price)
+
+
+    if "\u20ac" in test_str:
+        test_str = test_str.replace("\u20ac", "")
+    if "€" in test_str:
+        test_str = test_str.replace("\u20ac", "")
+
+    return test_str
+
+
 def device_sync(device):
     if "cuda" in device:
         torch.cuda.synchronize(device)
@@ -85,11 +253,12 @@ def decode_n_tokens(model: Transformer, cur_token: torch.Tensor, input_pos: torc
 
 
 
-def encode_tokens(tokenizer, string, bos=False, device='cuda'):
-    tokens = tokenizer.encode(string)
-    if bos:
-        tokens = [tokenizer.encode(tokenizer.bos_token)[0]] + tokens
-    return torch.tensor(tokens, dtype=torch.int, device=device)
+def encode_tokens(tokenizer, chat, bos=False, device='cuda'):
+    tokenized_sample = tokenizer(
+            chat, add_special_tokens=False, return_tensors="pt"
+        ).to(device)
+    tokens = tokenized_sample["input_ids"][0]
+    return tokens.to(torch.int)
 
 
 def clean_llm_output(output):
@@ -112,6 +281,11 @@ def clean_llm_output(output):
             output = output[:last_punct+1]
 
     return output
+
+
+def format_conversation(tokenizer, system_prompt, msgs):
+   
+    return {"text": chat}
 
 
 class PhiEngine:
@@ -149,15 +323,18 @@ class PhiEngine:
         self.model.to(device=device, dtype=precision)
     
     def initialize(self, checkpoint_path, device, max_new_tokens):
+        with open("assets/col-data-v6.json", "r") as file:
+            data = json.load(file)
+        self.system_prompt = data[-1]["prompt"]
         precision = torch.bfloat16
         logging.info("[LLM INFO:] Loading model ...")
         t0 = time.time()
         self._load_model(checkpoint_path, device, precision)
         logging.info(f"[LLM INFO:] Time to load model: {time.time() - t0:.02f} seconds")
 
-        device_sync(device=device) # MKG
+        # device_sync(device=device) # MKG
         
-        self.tokenizer = AutoTokenizer.from_pretrained("microsoft/phi-2")
+        self.tokenizer = AutoTokenizer.from_pretrained("/root/gpt-fast/phi-2/checkpoints/collabora/phi2-vox")
 
         t0 = time.time()
         if compile:
@@ -167,8 +344,8 @@ class PhiEngine:
 
         torch.manual_seed(1234)
         self.model_size = sum([p.numel() * p.dtype.itemsize for p in itertools.chain(self.model.parameters(), self.model.buffers())])
-        
-        encoded = encode_tokens(self.tokenizer, "Hello, I am warming up", bos=False, device=device)
+        input_text = self.format_prompt_chatml("Hello, I am Ready.", [], system_prompt=self.system_prompt)
+        encoded = encode_tokens(self.tokenizer, input_text, bos=False, device=device)
         logging.info("[LLM INFO:] Phi torch compile warm up")
         for i in tqdm(range(5), desc="warming up Phi torch compile model"):
             y = self.generate(
@@ -177,7 +354,7 @@ class PhiEngine:
                     temperature=0.8,
                     top_k=200,
                 )
-            device_sync(device=device) # MKG
+            # device_sync(device=device) # MKG
         logging.info(f"[LLM INFO:] Compilation time: {time.time() - t0:.02f} seconds")
         self.last_prompt = None
         self.last_output = None
@@ -195,12 +372,13 @@ class PhiEngine:
         return f"{formatted_prompt}Alice: {prompt}\nBob:"
 
     def format_prompt_chatml(self, prompt, conversation_history, system_prompt=""):
-        formatted_prompt = ("<|im_start|>system\n" + system_prompt + "<|im_end|>\n")
+        messages = [{"role": "system", "content": system_prompt}]
         for user_prompt, llm_response in conversation_history:
-            formatted_prompt += f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
-            formatted_prompt += f"<|im_start|>assistant\n{llm_response}<|im_end|>\n"
-        formatted_prompt += f"<|im_start|>user\n{prompt}<|im_end|>\n"
-        return formatted_prompt
+            messages.append({"role": "user", "content": user_prompt})
+            messages.append({"role": "assistant", "content": llm_response})
+        messages.append({"role": "user", "content": prompt})
+        return self.tokenizer.apply_chat_template(messages, tokenize=False).strip() 
+
     
     @torch.no_grad()
     def generate(
@@ -216,15 +394,18 @@ class PhiEngine:
         # create an empty tensor of the expected final shape and fill in the current tokens
         T = prompt.size(0)
         T_new = T + max_new_tokens
-        max_seq_length = min(T_new, self.model.config.block_size)
-
+        max_seq_length = min(T_new, self.model.config.block_size - 1)
+        # max_length = self.model.config.block_size
+        logging.info("=============================================================")
+        logging.info(f"[LLM INFO:] max_seq_length: {self.model.config.block_size - 1}")
+        logging.info("=============================================================")
         device, dtype = prompt.device, prompt.dtype
         with torch.device(device):
             print(device)
-            self.model.setup_caches(max_batch_size=1, max_seq_length=max_seq_length)
+            self.model.setup_caches(max_batch_size=1, max_seq_length=self.model.config.block_size - 1)
             
         # create an empty tensor of the expected final shape and fill in the current tokens
-        empty = torch.empty(T_new, dtype=dtype, device=device)
+        empty = torch.empty(self.model.config.block_size, dtype=dtype, device=device)
         empty[:T] = prompt
         seq = empty
         input_pos = torch.arange(0, T, device=device)
@@ -235,7 +416,7 @@ class PhiEngine:
 
         input_pos = torch.tensor([T], device=device, dtype=torch.int)
         
-        generated_tokens, _ = decode_n_tokens(self.model, next_token.view(1, -1), input_pos, max_new_tokens - 1, **sampling_kwargs)
+        generated_tokens, _ = decode_n_tokens(self.model, next_token.view(1, -1), input_pos, self.model.config.block_size - T - 1, **sampling_kwargs)
         seq[T + 1:] = torch.cat(generated_tokens)
 
         return seq
@@ -246,17 +427,18 @@ class PhiEngine:
         llm_queue=None,
         audio_queue=None,
         prompt = "Hello, my name is Samantha. I am a doctor.",
-        checkpoint_path = Path("assets/model_int8.pth"),
+        checkpoint_path = Path("assets/vox_model.pth"),
         compile = True,
         temperature = 0.8,
         top_k = 200,
-        max_new_tokens = 100,
+        max_new_tokens = 240,
         device='cuda'
     ):
         self.initialize(checkpoint_path, device, max_new_tokens)
         conversation_history = {}
         while True:
             # Get the last transcription output from the queue
+            # logging.info(f"[LLM INFO]: {transcription_queue.qsize()}")
             transcription_output = transcription_queue.get()
             if transcription_queue.qsize() != 0:
                 continue
@@ -265,7 +447,8 @@ class PhiEngine:
                 conversation_history[transcription_output["uid"]] = []
 
             prompt = transcription_output['prompt'].strip()
-
+            logging.info(f"[LLM INFO:] got prompt : {prompt}")
+            
             # if prompt is same but EOS is True, we need that to send outputs to websockets
             if self.last_prompt == prompt:
                 if self.last_output is not None and transcription_output["eos"]:
@@ -281,14 +464,17 @@ class PhiEngine:
                         (transcription_output['prompt'].strip(), self.last_output[0].strip())
                     )
                     continue
-            
+            if prompt == "": continue
             # input_text=[self.format_prompt_qa(prompt, conversation_history[transcription_output["uid"]])]
-            input_text=[self.format_prompt_chatml(prompt, conversation_history[transcription_output["uid"]], system_prompt="You are Dolphin, a helpful AI assistant")]
+            input_text=self.format_prompt_chatml(prompt, conversation_history[transcription_output["uid"]], system_prompt=self.system_prompt)
+            # input_text = self.format_prompt_qa(prompt, conversation_history[transcription_output["uid"]])
+            # logging.info(f"[LLM INFO:] got input : {input_text}")
             self.eos = transcription_output["eos"]
             encoded = encode_tokens(self.tokenizer, input_text, bos=False, device=device)
             prompt_length = encoded.size(0)
-            
+            print(prompt_length, encoded)
             t0 = time.perf_counter()
+            # device_sync(device=device) # MKG
             y = self.generate(
                     encoded,
                     max_new_tokens,
@@ -298,9 +484,22 @@ class PhiEngine:
             self.infer_time = time.perf_counter() - t0
             device_sync(device=device) # MKG
 
-            output = [self.tokenizer.decode(y.tolist())]
+            output = self.tokenizer.decode(y.tolist()[prompt_length:], skip_special_tokens=True).strip()
+            logging.info(f"[LLM INFO:] output: {output}")
+            if output.startswith("<|im_start|>user"):
+                output = output.split("<|im_start|>user")[1].strip()
+            if output.startswith("<|im_start|>assistant"):
+                output = output.split("<|im_start|>assistant")[1].strip()
+            logging.info(f"[LLM INFO:] after splitting user, assistant output: {output}")
+            output = [output.split("<|im_start|>")[0].strip()]
+            # output = [output.split("<|im_start|>user")[0].split("<|im_start|>assistant")[-1].strip().strip("\n")]
+            logging.info(f"[LLM INFO:] Final output after splitting: {output[0]}")
+
+
+            output = [get_llm_output_json(output[0])]
+
             if output is not None:
-                output[0] = clean_llm_output(output[0])
+                # output[0] = clean_llm_output(output[0])
                 self.last_output = output
                 self.last_prompt = prompt
                 llm_queue.put({
@@ -309,9 +508,21 @@ class PhiEngine:
                     "eos": self.eos,
                     "latency": self.infer_time
                 })
-                audio_queue.put({"llm_output": output, "eos": self.eos})
+                
                 logging.info(f"[LLM INFO:] Output: {output[0]}\nLLM inference done in {self.infer_time} ms\n\n")
-            
+                resp = None
+                try:
+                    resp = json.loads(output[0])['r']
+                    
+                    logging.info(f"[LLM INFO:] response: {resp}\nLLM inference done in {self.infer_time} ms\n\n")
+                    logging.info(f"[LLM INFO:] json resp {json.loads(output[0])}")
+                except Exception as e:
+                    logging.warning(f"[LLM WARNING:] {e}")
+                
+                if resp is None:
+                    resp = output[0].split('"r": ')[-1].split(', "m"')[0]
+                audio_queue.put({"llm_output": [resp], "eos": self.eos})
+                
             if self.eos:
                 conversation_history[transcription_output["uid"]].append(
                     (transcription_output['prompt'].strip(), output[0].strip())
@@ -325,7 +536,6 @@ class PhiEngine:
             # tokens_sec = tokens_generated / t
             # print(f"Time for inference : {t:.02f} sec total, {tokens_sec:.02f} tokens/sec")
             # print(f"Memory used: {torch.cuda.max_memory_reserved() / 1e9:.02f} GB")
-            break
 
 
 if __name__=="__main__":
