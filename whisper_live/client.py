@@ -1,6 +1,8 @@
 import os
 import wave
 
+import torchaudio
+import torch
 import numpy as np
 import scipy
 import ffmpeg
@@ -83,6 +85,7 @@ class Client:
         self.language = lang
         self.model_size = model_size
         self.server_error = False
+        self.tts_out_count = 0
         if translate:
             self.task = "translate"
 
@@ -153,7 +156,7 @@ class Client:
         """
         self.last_response_recieved = time.time()
         message = json.loads(message)
-
+        print(message)
         if self.uid != message.get("uid"):
             print("[ERROR]: invalid client uid")
             return
@@ -240,21 +243,23 @@ class Client:
             json.dumps(
                 {
                     "uid": self.uid,
-                    "multilingual": self.multilingual,
                     "language": self.language,
                     "task": self.task,
-                    "model_size": self.model_size,
+                    "model": self.model_size,
                 }
             )
         )
     
-    def on_open_tts(self):
+    def on_open_tts(self, ws):
         pass
 
     def on_message_tts(self, ws, message):
         # print(message)
         print(type(message))
-        self.write_audio_frames_to_file(message.tobytes(), "tts_out.wav", rate=24000)
+        audio_np = np.frombuffer(message, dtype=np.float32)
+        print(audio_np.shape)
+        audio = torch.from_numpy(audio_np.copy().reshape(1, -1))
+        self.write_tts_out(audio, "tts_out.wav", 24000)
         pass
 
     def on_error_tts(self, ws, error):
@@ -262,6 +267,12 @@ class Client:
 
     def on_close_tts(self, ws, close_status_code, close_msg):
         print(f"[INFO]: Websocket connection closed: {close_status_code}: {close_msg}")
+    
+    def write_tts_out(self, frames, file_name, srate):
+        if isinstance(frames, bytes): return
+        self.tts_out_count += 1
+        print(frames.shape)
+        torchaudio.save(f"{file_name.split('.')[0]}_{self.tts_out_count}.wav", frames, srate)
     
     @staticmethod
     def bytes_to_float_array(audio_bytes):
@@ -389,6 +400,7 @@ class Client:
             wavfile.setsampwidth(2)
             wavfile.setframerate(self.rate if rate is None else rate)
             wavfile.writeframes(frames)
+
 
     def process_hls_stream(self, hls_url):
         """
