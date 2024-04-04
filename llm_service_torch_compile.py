@@ -289,7 +289,7 @@ class PhiEngine:
         self.model.to(device=device, dtype=precision)
     
     def initialize(self, checkpoint_path, device, max_new_tokens):
-        with open("assets/col-data-v6.json", "r") as file:
+        with open("assets/phi-2/col-data-v6.json", "r") as file:
             data = json.load(file)
         self.system_prompt = data[-1]["prompt"]
         precision = torch.bfloat16
@@ -393,7 +393,7 @@ class PhiEngine:
         llm_queue=None,
         audio_queue=None,
         prompt = "Hello, my name is Samantha. I am a doctor.",
-        checkpoint_path = Path("assets/vox_model.pth"),
+        checkpoint_path = Path("assets/phi-2/model.pth"),
         compile = True,
         temperature = 0.8,
         top_k = 200,
