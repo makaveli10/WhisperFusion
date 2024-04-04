@@ -69,6 +69,7 @@ class WhisperSpeechTTS:
             if self.eos and self.output_audio is not None:
                 try:
                     websocket.send(self.output_audio.tobytes())
+                    self.output_audio = None
                 except Exception as e:
                     logging.error(f"[WhisperSpeech ERROR:] Audio error: {e}")
 
