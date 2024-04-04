@@ -82,9 +82,9 @@ if __name__ == "__main__":
         args=(
             "0.0.0.0",
             6006,
+            "faster_whisper",
             transcription_queue,
             llm_queue,
-            args.whisper_tensorrt_path,
             should_send_server_ready
         )
     )
