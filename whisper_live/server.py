@@ -189,13 +189,14 @@ class TranscriptionServer:
             A numpy array containing the audio.
         """
         frame_data = websocket.recv()
-        # if frame_data == b"END_OF_AUDIO":
-        #     return False
         data = json.loads(frame_data)
         audio_buffer_base64 = data['frame_data']
         uint8_array = np.frombuffer(base64.b64decode(audio_buffer_base64), dtype=np.uint8)
         frame_np = uint8_array.view(dtype=np.float32)
         return frame_np
+        # if frame_data == b"END_OF_AUDIO":
+        #     return False
+        # return np.frombuffer(frame_data, dtype=np.float32)
 
     def handle_new_connection(self, websocket, faster_whisper_custom_model_path,
                               whisper_tensorrt_path, trt_multilingual, transcription_queue=None,
@@ -885,7 +886,9 @@ class ServeClientFasterWhisper(ServeClientBase):
         if len(result):
             self.prompt, segments = self.update_segments(result, duration)
             if self.last_prompt != self.prompt:
-                self.send_transcription_to_client(segments, infer_time)            if self.eos:
+                self.send_transcription_to_client(segments, infer_time)            
+            
+            if self.eos:
                 self.timestamp_offset += duration
                 logging.info(
                     f"[Whisper INFO]: Average inference time {sum(self.segment_inference_time) / len(self.segment_inference_time)}\n\n")
