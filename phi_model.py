@@ -165,6 +165,7 @@ class Attention(nn.Module):
         
         # cos, sin = self.rotary_emb(v, kv_seq_len)
         cos, sin = self.rotary_emb(v, input_pos.unsqueeze(0))
+        # print("Done Rope")
         # print(cos.shape, sin.shape, input_pos, kv_seq_len)
         query_rot, query_pass = (
             q[..., : self.rotary_emb.dim],
@@ -250,6 +251,7 @@ class PhiRotaryEmbedding(nn.Module):
         # if seq_len > self.max_seq_len_cached:
         #     self._set_cos_sin_cache(seq_len=seq_len, device=x.device, dtype=x.dtype)
         # pos = torch.arange(seq_len)
+        # print("In RoPE")
         return (
             self.cos_cached[pos].to(dtype=x.dtype),
             self.sin_cached[pos].to(dtype=x.dtype),
