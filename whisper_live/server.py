@@ -206,9 +206,6 @@ class TranscriptionServer:
             options = websocket.recv()
             options = json.loads(options)
             logging.info(options)
-            # options = {
-
-            # }
             
             if self.client_manager.is_server_full(websocket, options):
                 websocket.close()
