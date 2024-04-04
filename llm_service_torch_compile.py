@@ -261,33 +261,6 @@ def encode_tokens(tokenizer, chat, bos=False, device='cuda'):
     return tokens.to(torch.int)
 
 
-def clean_llm_output(output):
-    output = output.replace("\n\nDolphin\n\n", "")
-    output = output.replace("\nDolphin\n\n", "")
-    output = output.replace("Dolphin: ", "")
-    output = output.replace("Assistant: ", "")
-
-    if not output.endswith('.') and not output.endswith('?') and not output.endswith('!'):
-        last_punct = output.rfind('.')
-        last_q = output.rfind('?')
-        if last_q > last_punct:
-            last_punct = last_q
-        
-        last_ex = output.rfind('!')
-        if last_ex > last_punct:
-            last_punct = last_ex
-        
-        if last_punct > 0:
-            output = output[:last_punct+1]
-
-    return output
-
-
-def format_conversation(tokenizer, system_prompt, msgs):
-   
-    return {"text": chat}
-
-
 class PhiEngine:
     def __init__(self):
         pass
@@ -310,15 +283,8 @@ class PhiEngine:
             from quantize import WeightOnlyInt4QuantHandler
             simple_quantizer = WeightOnlyInt4QuantHandler(self.model, groupsize)
             self.model = simple_quantizer.convert_for_runtime()
+        
         checkpoint = torch.load(str(checkpoint_path), mmap=True, weights_only=True)
-        model_state_dict = self.model.state_dict()
-        for k, v in model_state_dict.items():
-            if k not in checkpoint.keys():
-                print(k)
-            # else:
-            #     print(k, v.shape)
-        # print(checkpoint.keys())
-        # print("=============================")
         self.model.load_state_dict(checkpoint, assign=True)
         self.model.to(device=device, dtype=precision)
     
@@ -332,7 +298,7 @@ class PhiEngine:
         self._load_model(checkpoint_path, device, precision)
         logging.info(f"[LLM INFO:] Time to load model: {time.time() - t0:.02f} seconds")
 
-        # device_sync(device=device) # MKG
+        device_sync(device=device) # MKG
         
         self.tokenizer = AutoTokenizer.from_pretrained("/root/gpt-fast/phi-2/checkpoints/collabora/phi2-vox")
 
@@ -354,7 +320,7 @@ class PhiEngine:
                     temperature=0.8,
                     top_k=200,
                 )
-            # device_sync(device=device) # MKG
+            device_sync(device=device) # MKG
         logging.info(f"[LLM INFO:] Compilation time: {time.time() - t0:.02f} seconds")
         self.last_prompt = None
         self.last_output = None
@@ -465,16 +431,15 @@ class PhiEngine:
                     )
                     continue
             if prompt == "": continue
-            # input_text=[self.format_prompt_qa(prompt, conversation_history[transcription_output["uid"]])]
+
             input_text=self.format_prompt_chatml(prompt, conversation_history[transcription_output["uid"]], system_prompt=self.system_prompt)
-            # input_text = self.format_prompt_qa(prompt, conversation_history[transcription_output["uid"]])
-            # logging.info(f"[LLM INFO:] got input : {input_text}")
+
             self.eos = transcription_output["eos"]
             encoded = encode_tokens(self.tokenizer, input_text, bos=False, device=device)
             prompt_length = encoded.size(0)
             print(prompt_length, encoded)
             t0 = time.perf_counter()
-            # device_sync(device=device) # MKG
+
             y = self.generate(
                     encoded,
                     max_new_tokens,
@@ -492,14 +457,12 @@ class PhiEngine:
                 output = output.split("<|im_start|>assistant")[1].strip()
             logging.info(f"[LLM INFO:] after splitting user, assistant output: {output}")
             output = [output.split("<|im_start|>")[0].strip()]
-            # output = [output.split("<|im_start|>user")[0].split("<|im_start|>assistant")[-1].strip().strip("\n")]
-            logging.info(f"[LLM INFO:] Final output after splitting: {output[0]}")
 
+            logging.info(f"[LLM INFO:] Final output after splitting: {output[0]}")
 
             output = [get_llm_output_json(output[0])]
 
             if output is not None:
-                # output[0] = clean_llm_output(output[0])
                 self.last_output = output
                 self.last_prompt = prompt
                 llm_queue.put({
@@ -513,9 +476,6 @@ class PhiEngine:
                 resp = None
                 try:
                     resp = json.loads(output[0])['r']
-                    
-                    logging.info(f"[LLM INFO:] response: {resp}\nLLM inference done in {self.infer_time} ms\n\n")
-                    logging.info(f"[LLM INFO:] json resp {json.loads(output[0])}")
                 except Exception as e:
                     logging.warning(f"[LLM WARNING:] {e}")
                 
