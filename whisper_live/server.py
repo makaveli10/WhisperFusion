@@ -750,14 +750,12 @@ class ServeClientFasterWhisper(ServeClientBase):
         self.no_speech_thresh = 0.45
 
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        # device = "cpu"
 
         if self.model_size_or_path is None:
             return
 
         self.transcriber = WhisperModel(
             self.model_size_or_path,
-            # "base.en",
             device=device,
             compute_type="int8" if device == "cpu" else "float16",
             local_files_only=False,
@@ -886,16 +884,12 @@ class ServeClientFasterWhisper(ServeClientBase):
         """
         if len(result):
             self.prompt, segments = self.update_segments(result, duration)
-            # logging.info(f"[Whisper INFO]: {self.prompt}, segments: {segments}, eos: {self.eos}")
             if self.last_prompt != self.prompt:
-                self.send_transcription_to_client(segments, infer_time)
-            
-            if self.eos:
+                self.send_transcription_to_client(segments, infer_time)            if self.eos:
                 self.timestamp_offset += duration
                 logging.info(
                     f"[Whisper INFO]: Average inference time {sum(self.segment_inference_time) / len(self.segment_inference_time)}\n\n")
                 self.transcription_queue.put({"uid": self.client_uid, "prompt": self.prompt, "eos": self.eos})
-                # logging.info(f"[WhisperLive INFO]: {self.transcription_queue.qsize()}")
                 self.segment_inference_time = []
 
 
@@ -920,13 +914,11 @@ class ServeClientFasterWhisper(ServeClientBase):
             # send the LLM outputs
             try:
                 llm_response = None
-                
                 if self.llm_queue is not None:
                     while not self.llm_queue.empty():
                         llm_response = self.llm_queue.get()
                     
                     if llm_response:
-                        logging.info(f"[LLM INFO]: {llm_response}")
                         llm_response["llm_output"] = llm_response["llm_output"][0]
                         eos = llm_response["eos"]
                         if eos:
@@ -1021,7 +1013,6 @@ class ServeClientFasterWhisper(ServeClientBase):
                 if s.no_speech_prob > self.no_speech_thresh:
                     continue
                 prompt += s.text
-                logging.info(f"[WhisperLive] updated prompt: {prompt}")
                 out_segments.append({"text": s.text})
                 # self.transcript.append(self.format_segment(start, end, text_))
                 # offset = min(duration, s.end)
