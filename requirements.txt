@@ -10,3 +10,5 @@ braceexpand
 openai-whisper
 whisperspeech
 soundfile
+transformers
+huggingface_hub
