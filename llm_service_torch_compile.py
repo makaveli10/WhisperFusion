@@ -300,7 +300,7 @@ class PhiEngine:
 
         device_sync(device=device) # MKG
         
-        self.tokenizer = AutoTokenizer.from_pretrained("/root/gpt-fast/phi-2/checkpoints/collabora/phi2-vox")
+        self.tokenizer = AutoTokenizer.from_pretrained("assets/phi-2/")
 
         t0 = time.time()
         if compile:
